@@ -1,9 +1,11 @@
-'''
-TODOS:
-1. Con más cuidades, solo cargar fza de ventas de esa cuidad
-'''
-from src.db_utils import get_data
-from src.visualize import ShortestPath
+import tensorflow as tf
+
+from src.classes import Encoder
+from src.classes import Decoder
+
+import unicodedata
+import re
+import pickle
 
 from dash.exceptions import PreventUpdate
 from dash.dependencies import Input, Output, State
@@ -25,7 +27,7 @@ import numpy as np
 import folium
 from flask import Flask, send_from_directory
 import os
-
+import base64
 
 UPLOAD_DIRECTORY = "files"
 
@@ -37,10 +39,63 @@ print(dcc.__version__) # 0.6.0 or above is required
 external_stylesheets = [dbc.themes.BOOTSTRAP]
 server = Flask(__name__)
 app = dash.Dash(server=server,  meta_tags=[{"name": "viewport", "content": "width=device-width"}])
-#server = app.server
-app.title= "Problema del vendedor viajero"
 
+app.title= "Neural Machine Translation y mecanismos de atención"
 app.config.suppress_callback_exceptions = True
+
+image_filename = 'matrizI.png'
+encoded_image = base64.b64encode(open(image_filename, 'rb').read())
+
+# open a file, where you stored the pickled data
+file = open('./training_checkpoints/nbr_EncDec_Units.pickle', 'rb')
+nbr_EncDec_Units = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_TamanioMax_FraseInput.pickle', 'rb')
+nbr_TamanioMax_FraseInput = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_TamanioMax_FraseTarget.pickle', 'rb')
+nbr_TamanioMax_FraseTarget = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/Tokenizador_Frases_Input.pickle', 'rb')
+Tokenizador_Frases_Input = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/Tokenizador_Frases_Target.pickle', 'rb')
+Tokenizador_Frases_Target = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_TamanioVoc_Input.pickle', 'rb')
+nbr_TamanioVoc_Input = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_TamanioVoc_Target.pickle', 'rb')
+nbr_TamanioVoc_Target = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_EmbeddingDim.pickle', 'rb')
+nbr_EmbeddingDim = pickle.load(file)
+file.close()
+
+file = open('./training_checkpoints/nbr_TamanioBatch.pickle', 'rb')
+nbr_TamanioBatch = pickle.load(file)
+file.close()
+
+# restoring the latest checkpoint in checkpoint_dir
+encoder = Encoder(nbr_TamanioVoc_Input, nbr_EmbeddingDim, nbr_EncDec_Units, nbr_TamanioBatch)
+#encoder = Encoder(0, 0, 0, 0)
+decoder = Decoder(nbr_TamanioVoc_Target, nbr_EmbeddingDim, nbr_EncDec_Units, nbr_TamanioBatch)
+#decoder = Decoder(0, 0, 0, 0)
+optimizer = tf.keras.optimizers.Adam()
+
+checkpoint_dir = './training_checkpoints'
+checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+checkpoint = tf.train.Checkpoint(optimizer=optimizer,
+                                 encoder=encoder,
+                                 decoder=decoder)
+checkpoint.restore(tf.train.latest_checkpoint(checkpoint_dir))
 
 
 # ============================ ELEMENTS ============================
@@ -141,11 +196,11 @@ app.layout = html.Div(
                         html.Div(
                             [
                                 html.H3(
-                                    "Problema del vendedor viajero",
+                                    "Métodos analíticos",
                                     style={"margin-bottom": "0px"},
                                 ),
                                 html.H5(
-                                    "Proyecto final Métodos Númericos y Optimización", style={"margin-top": "0px"}
+                                    "Neural Machine Translation y mecanismos de atención", style={"margin-top": "0px"}
                                 ),
                             ]
                         )
@@ -168,101 +223,32 @@ app.layout = html.Div(
 
         html.Div(
             [
+                html.Div(
+                    [
+                    html.H6("Ingresa el texto a traducir",className="control_label"),
+                    html.Div(dcc.Input(id='input-on-submit', type='text', value='Hola a todos')),
+                    html.Button('Traducir', id='submit-val', n_clicks=0),
+                    html.Div(id='container-button-basic', children='Enter a value and press submit')
+
+                    ],
+                    className="pretty_container five columns"
+                ),
 
                 html.Div(
-                    [html.Iframe(id = "map", srcDoc = open("mapas/mapa_base.html", 'r').read(),
-                    width=650, height=350)],
-                     className="pretty_container seven columns",
-                ),
-
-                html.Div([
-                html.P(id="radioitems-checklist-output",
-                        className="control_label"),
-
-                html.H6(
-                    "Selecciona un algoritmo",
-                    className="control_label",
-                ),
-                dcc.RadioItems(
-                    id="tipoAlgoritmo",
-                    options=[
-                        {"label": "Simulated Annealing", "value": 1},
-                        {"label": "Particle Swarm", "value": 2},
-                        {"label": "Ambos", "value": 3},
+                    [
+                    html.Img(id="plotly-image2", src='data:image/png;base64,{}'.format(encoded_image.decode()))
                     ],
-                    value=1,
-                    #labelStyle={"display": "inline-block"},
-                    className="dcc_control",
+                    className="pretty_container seven columns",
                 ),
-                html.H6(
-                    "Selecciona un estado:",
-                    className="control_label",
-                ),
-                dcc.Dropdown(
-                    id="ciudad_dropdown",
-                    #options=edo.to_dict("records"),
-                    value="Jalisco",
-                    className="dcc_control",
-                    multi=False,
-                ),
-
-                html.H6(
-                    "Selecciona una fuerza de venta",
-                    className="control_label",
-                ),
-                dcc.Dropdown(
-                    id="fza_dropdown",
-                    #options=edo.to_dict("records"),
-                    value=1,
-                    className="dcc_control",
-                    multi=False,
-                ),
-
-                html.P(
-                    "",
-                    className="control_label",
-                ),
-                html.Button("Ver ruta", id="button_envia", className="control_center"),
-
-
-                ],
-                className="pretty_container five columns"),
 
             ],
             className="row flex-display",
-            ),
-
-
-        html.Div(
-            [
-                html.Div(
-                    [html.P(id="ruta-corta"),
-                    html.H6("Ruta más corta")],
-                    id="wells",
-                    className="mini_container",
-                ),
-
-                html.Div(
-                    [html.H6(id="distancia"), html.P("Distancia (en kilómetros)")],
-                    id="esc",
-                    className="mini_container",
-                ),
-            ],
-            id="info-container",
-            className="row container-display",
         ),
          markdown_popup(),
     ],
     id="mainContainer",
     style={"display": "flex", "flex-direction": "column"},
 )
-
-
-
-
-
-
-
 
 @app.callback(
     Output("fade", "is_in"),
@@ -274,97 +260,6 @@ def toggle_fade(n, is_in):
         # Button has never been clicked
         return False
     return not is_in
-
-
-@app.callback(
-    [Output("map", "srcDoc"),
-    Output('distancia','children'),
-    Output('ruta-corta','children')],
-    [Input('button_envia', "n_clicks")],
-    [State('tipoAlgoritmo', "value"),
-     State("fza_dropdown", "value")])
-
-def update_results(n_clicks, value_tipo, value_fza):
-    """
-    Actualiza la tabla y el mapa
-    Obtiene los resultados con las especificaciones del usuario
-
-    """
-    if n_clicks is None:
-        raise PreventUpdate
-    else:
-        if value_fza == []:
-            raise PreventUpdate
-
-        map_name = "mapas/mapa_"+ str(value_tipo) + \
-                    "_" + str(value_fza) + ".html"
-
-        agent = ShortestPath()
-        # Si ya existe el mapa, solo saca la distancia
-        if os.path.isfile(map_name)==True:
-            distancia, ruta = agent.get_distance(value_tipo,value_fza)
-        else:
-            distancia, ruta = agent.get_path(value_tipo,value_fza,map_name)
-
-        abre_mapa = open(map_name, 'r').read()
-        distancia = format(float(round(distancia,2)), ',')
-
-        return abre_mapa, distancia, ruta
-
-@app.callback(
-    Output("radioitems-checklist-output", "children"),
-    [
-        Input("fza_dropdown", "value"),
-    ],
-)
-def on_form_change(n_drop):
-    error = "Por favor, selecciona una fuerza de ventas."
-    if n_drop == []:
-        output_string = error
-    else:
-        output_string = ""
-
-    return output_string
-
-
-@app.callback(
-    [Output('ciudad_dropdown', 'options')],
-    [Input('tipoAlgoritmo', 'value')]
-)
-def update_dropdown_ciudad(tipo):
-    if tipo  ==  int(1):
-        algorithm_name = 'SA'
-    elif tipo  ==  int(2):
-        algorithm_name = 'PS'
-
-    query = "select distinct estado from trabajo.resultados_vw \
-    order by estado ; "
-    print(query)
-    df = get_data(query)
-    df.columns = ['label']
-    df['value'] = df['label'] #df.index +1
-    print(df)
-    resp = [df.to_dict("records")]
-    return resp
-
-
-
-@app.callback(
-    [Output('fza_dropdown', 'options')],
-    [Input('ciudad_dropdown', 'value')]
-)
-def update_dropdown_fza(tipo):
-
-    query =  "select distinct id_fza_ventas " + \
-    "from trabajo.resultados_vw where estado = '" + \
-    str(tipo) +  "' order by id_fza_ventas;"
-    print(query)
-
-    df = get_data(query)
-    df.columns = ['label']
-    df['value'] = df['label']
-    resp = [df.to_dict("records")]
-    return resp
 
 
 @app.callback(
@@ -382,6 +277,137 @@ def update_click_output(button_click, close_click):
     else:
         return {"display": "none"}
 
+@app.callback(
+    [dash.dependencies.Output('container-button-basic', 'children'),
+    Output("plotly-image2", "src")],
+    [dash.dependencies.Input('submit-val', 'n_clicks')],
+    [dash.dependencies.State('input-on-submit', 'value')]
+    )
+def update_output(n_clicks, value):
+    if n_clicks==0:
+        #image_filename = 'assets/books_read.png'
+        #encoded_image = base64.b64encode(open(image_filename, 'rb').read())
+        #str_ValorPlot = 'data:image/png;base64,{}'.format(encoded_image.decode())
+        #str_Resultado = ''
+        #str_Resultado = func_aux(value)
+        str_Resultado = 'Traducción: {}'.format('hi ! <end>')
+        encoded_image = base64.b64encode(open('matrizI.png', 'rb').read())
+        str_ValorPlot = 'data:image/png;base64,{}'.format(encoded_image.decode())
+    else:
+        if str(value) == 'None' or str(value) == '':
+            str_Resultado = 'Se debe capturar algún texto'
+        else:
+            try:
+                str_Resultado = func_aux(str(value))
+                encoded_image = base64.b64encode(open('matrizR.png', 'rb').read())
+                str_ValorPlot = 'data:image/png;base64,{}'.format(encoded_image.decode())
+            except BaseException as errorPrueba:
+                str_Resultado = 'La siguiente palabra no se encuentra en el diccionario: ' + str(errorPrueba)
+                encoded_image = base64.b64encode(open('matrizI.png', 'rb').read())
+                str_ValorPlot = 'data:image/png;base64,{}'.format(encoded_image.decode())
+
+        #import matplotlib.pyplot as plt
+        #plt.plot([0, 1, 2, 3, 4], [0, 3, 5, 9, 11])
+        #plt.xlabel('Months')
+        #plt.ylabel('Books Read'+ str_Resultado)
+        #plt.savefig('books_read.png')
+
+        #encoded_image = base64.b64encode(open('books_read.png', 'rb').read())
+        #str_ValorPlot = 'data:image/png;base64,{}'.format(encoded_image.decode())
+
+    return str_Resultado, str_ValorPlot
+
+
+def func_aux(str_Input):
+    # str_Resultado = 'Este es el resultado de la función' + str_Input
+    print(nbr_EncDec_Units)
+    result, sentence, np_attention_plot = evaluate(str_Input)
+
+    np_attention_plot = np_attention_plot[:len(result.split(' ')), :len(sentence.split(' '))]
+    plot_attention(np_attention_plot, sentence.split(' '), result.split(' '))
+
+    return 'Traducción: {}'.format(result)
+
+def ConvertirUnicodeToAscii(str_Texto):
+    return ''.join(c for c in unicodedata.normalize('NFD', str_Texto) if unicodedata.category(c) != 'Mn')
+
+
+def PrepararOraciones(str_Oracion):
+    str_Oracion = ConvertirUnicodeToAscii(str_Oracion.lower().strip())
+
+    # Se crea un espacio entre las palabras y signos de puntuación
+    str_Oracion = re.sub(r"([?.!,¿])", r" \1 ", str_Oracion)
+    str_Oracion = re.sub(r'[" "]+', " ", str_Oracion)
+
+    # Se reemplaza todo por un espacio excepto letras y signos especificados
+    str_Oracion = re.sub(r"[^a-zA-Z?.!,¿]+", " ", str_Oracion)
+
+    str_Oracion = str_Oracion.strip()
+
+    # Se agrega el token de inicio y fin
+    str_Oracion = '<start> ' + str_Oracion + ' <end>'
+    return str_Oracion
+
+def evaluate(str_Oracion):
+    np_attention_plot = np.zeros((nbr_TamanioMax_FraseTarget, nbr_TamanioMax_FraseInput))
+
+    str_OracionPreparada = PrepararOraciones(str_Oracion)
+
+    inputs = [Tokenizador_Frases_Input.word_index[i] for i in str_OracionPreparada.split(' ')]
+    inputs = tf.keras.preprocessing.sequence.pad_sequences([inputs],
+                                                         maxlen=nbr_TamanioMax_FraseInput,
+                                                         padding='post')
+    tensor_Input = tf.convert_to_tensor(inputs)
+
+    result = ''
+
+    tensor_Encoder_Oculto_Init = [tf.zeros((1, nbr_EncDec_Units))]
+
+    tensor_Encoder_Output, tensor_Encoder_Estado_Oculto = encoder(tensor_Input, tensor_Encoder_Oculto_Init)
+
+    tensor_Decoder_Estado_Oculto = tensor_Encoder_Estado_Oculto
+    tensor_Decoder_Input = tf.expand_dims([Tokenizador_Frases_Target.word_index['<start>']], 0)
+
+    # nbr_TamanioMax_FraseTarget, nbr_TamanioMax_FraseInput
+    for token in range(nbr_TamanioMax_FraseTarget):
+        # tensor_decoder_output, tensor_state, tensor_attention_weights
+        tensor_Predicciones, tensor_Decoder_Estado_Oculto, tensor_attention_weights = decoder.call(tensor_Decoder_Input,
+                                                             tensor_Decoder_Estado_Oculto,
+                                                             tensor_Encoder_Output)
+
+        # storing the attention weights to plot later on
+        tensor_attention_weights = tf.reshape(tensor_attention_weights, (-1, ))
+        np_attention_plot[token] = tensor_attention_weights.numpy()
+
+        predicted_id = tf.argmax(tensor_Predicciones[0]).numpy()
+
+        result += Tokenizador_Frases_Target.index_word[predicted_id] + ' '
+
+        if Tokenizador_Frases_Target.index_word[predicted_id] == '<end>':
+            return result, str_OracionPreparada, np_attention_plot
+
+        # the predicted ID is fed back into the model
+        tensor_Decoder_Input = tf.expand_dims([predicted_id], 0)
+
+    return result, str_OracionPreparada, np_attention_plot
+
+
+def plot_attention(attention, sentence, predicted_sentence):
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.matshow(attention, cmap='viridis')
+
+    fontdict = {'fontsize': 14}
+
+    ax.set_xticklabels([''] + sentence, fontdict=fontdict, rotation=90)
+    ax.set_yticklabels([''] + predicted_sentence, fontdict=fontdict)
+
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    plt.savefig('matrizR.png', dpi=65)
 
 ################################# MAIN ################################
 if __name__ == '__main__':
