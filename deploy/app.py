@@ -37,8 +37,8 @@ if not os.path.exists(UPLOAD_DIRECTORY):
 #---------------- INICIALIZE ----------------
 print(dcc.__version__) # 0.6.0 or above is required
 external_stylesheets = [dbc.themes.BOOTSTRAP]
-server = Flask(__name__)
-app = dash.Dash(server=server,  meta_tags=[{"name": "viewport", "content": "width=device-width"}])
+neuralmachinetranslator = Flask(__name__)
+app = dash.Dash(server=neuralmachinetranslator,  meta_tags=[{"name": "viewport", "content": "width=device-width"}])
 
 app.title= "Neural Machine Translation y mecanismos de atención"
 app.config.suppress_callback_exceptions = True
